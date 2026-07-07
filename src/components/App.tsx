@@ -7,6 +7,7 @@ import TraceCard from './TraceCard';
 import Toolbar from './Toolbar';
 import FeaturePanel from './FeaturePanel';
 import TopControls from './TopControls';
+import RotationControl from './RotationControl';
 import SideNav from './SideNav';
 import { useOss } from '@/lib/store';
 import { acresOf, fmtAcres } from '@/lib/geo';
@@ -69,6 +70,9 @@ export default function App() {
                 <FeaturePanel />
               </div>
             )}
+            <div className="absolute bottom-28 right-3">
+              <RotationControl />
+            </div>
             <div className="absolute bottom-4 left-3">
               <div className="pointer-events-auto rounded-2xl bg-white/85 px-4 py-2.5 shadow-lg ring-1 ring-black/5 backdrop-blur-xl">
                 <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Your plot</p>

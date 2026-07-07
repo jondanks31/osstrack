@@ -2,11 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
+import 'leaflet-rotate';
 import '@geoman-io/leaflet-geoman-free';
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import { buffer } from '@turf/turf';
 import { useOss } from '@/lib/store';
+import { mapController } from '@/lib/mapController';
 import { KINDS } from '@/lib/kinds';
 import type { FeatureKind, PlanFeature } from '@/lib/types';
 
@@ -56,6 +58,7 @@ export default function MapCanvas() {
   const basemap = useOss((s) => s.basemap);
   const mapOpacity = useOss((s) => s.mapOpacity);
   const searchTarget = useOss((s) => s.searchTarget);
+  const bearing = useOss((s) => s.bearing);
 
   // ── init map (once) ────────────────────────────────────────────────
   useEffect(() => {
@@ -65,7 +68,11 @@ export default function MapCanvas() {
       zoomControl: false,
       attributionControl: false,
       zoomSnap: 0.5,
-    }).setView([52.5, -1.9], 6);
+      rotate: true,
+      rotateControl: false,
+      touchRotate: false,
+      bearing: useOss.getState().bearing,
+    } as L.MapOptions).setView([52.5, -1.9], 6);
 
     L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -81,7 +88,12 @@ export default function MapCanvas() {
     satellite.addTo(map);
     tilesRef.current = { satellite, street };
 
-    map.createPane('mask').style.zIndex = '350';
+    // leaflet-rotate nests tilePane + overlayPane inside rotatePane; the mask must live
+    // there too so it rotates with the map. Tiles are z-index 200 and features 400, so
+    // the mask sits at 350 — above the imagery but below the drawn features.
+    const rotatePane = map.getPane('rotatePane');
+    const maskPane = map.createPane('mask', rotatePane ?? undefined);
+    maskPane.style.zIndex = '350';
     boundaryGroupRef.current = L.layerGroup().addTo(map);
     featureGroupRef.current = L.layerGroup().addTo(map);
 
@@ -91,6 +103,7 @@ export default function MapCanvas() {
       const s = useOss.getState();
       const gj = (e.layer as L.Polygon).toGeoJSON() as GeoJSON.Feature;
       e.layer.remove();
+      s.setTraceVertices(0);
       if (s.drawKind === 'boundary') {
         if (gj.geometry.type === 'Polygon') {
           s.setBoundary(gj as GeoJSON.Feature<GeoJSON.Polygon>);
@@ -100,16 +113,36 @@ export default function MapCanvas() {
       }
     });
 
+    // keep the live trace point count in sync so the trace card can show progress.
+    // pm:vertexadded fires on the working layer (not the map), so attach on drawstart.
+    map.on('pm:drawstart', (e) => {
+      useOss.getState().setTraceVertices(0);
+      const wl = (e as unknown as { workingLayer?: L.Evented }).workingLayer;
+      wl?.on('pm:vertexadded', () => {
+        if (useOss.getState().drawKind === 'boundary') {
+          useOss.getState().setTraceVertices(mapController.activeVertexCount());
+        }
+      });
+    });
+
     // click on empty map clears selection
     map.on('click', () => useOss.getState().select(null));
 
     fittedBoundaryRef.current = null; // new map instance must re-fit to the boundary
     mapRef.current = map;
+    mapController.register(map);
     return () => {
+      mapController.register(null);
       map.remove();
       mapRef.current = null;
     };
   }, []);
+
+  // ── rotation ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current as (L.Map & { setBearing?: (d: number) => void }) | null;
+    map?.setBearing?.(bearing);
+  }, [bearing]);
 
   // ── basemap + opacity ──────────────────────────────────────────────
   useEffect(() => {
@@ -259,7 +292,7 @@ export default function MapCanvas() {
       hintlineStyle: { color, dashArray: '5 5' },
       pathOptions: kind
         ? { color, fillColor: color, fillOpacity: 0.25 }
-        : { color, fill: false, weight: 2.5 },
+        : { color, fillColor: color, fillOpacity: 0.12, weight: 2.5 },
       markerStyle: kind ? { icon: markerIcon(kind, false) } : undefined,
       continueDrawing: false,
     });

@@ -26,15 +26,23 @@ interface OssState {
   basemap: Basemap;
   /** 0..1 aerial imagery opacity inside the plot */
   mapOpacity: number;
+  /** map rotation in degrees (0 = north up) */
+  bearing: number;
   /** where search wants the map to fly; null until a place is picked */
   searchTarget: { lat: number; lng: number } | null;
+  /** live count of points placed while tracing the boundary */
+  traceVertices: number;
 
   phase: () => Phase;
   setMode: (m: Mode) => void;
   setDrawKind: (k: DrawTarget | null) => void;
+  startBoundaryTrace: () => void;
   setBasemap: (b: Basemap) => void;
   setMapOpacity: (o: number) => void;
+  setBearing: (deg: number) => void;
+  rotateBy: (delta: number) => void;
   setSearchTarget: (t: { lat: number; lng: number } | null) => void;
+  setTraceVertices: (n: number) => void;
   setPlanName: (name: string) => void;
   setBoundary: (b: BoundaryFeature | null) => void;
   addFeature: (kind: FeatureKind, geometry: GeoJSON.Geometry) => string;
@@ -56,7 +64,9 @@ export const useOss = create<OssState>()(
       drawKind: null,
       basemap: 'satellite',
       mapOpacity: 0.7,
+      bearing: 0,
       searchTarget: null,
+      traceVertices: 0,
 
       phase: () => {
         const s = get();
@@ -66,7 +76,12 @@ export const useOss = create<OssState>()(
 
       setMode: (mode) => set({ mode, drawKind: null }),
       setDrawKind: (drawKind) => set({ drawKind }),
+      // tracing requires edit mode; force it so a stale 'view' can't silently block drawing
+      startBoundaryTrace: () => set({ mode: 'edit', drawKind: 'boundary', traceVertices: 0 }),
       setBasemap: (basemap) => set({ basemap }),
+      setBearing: (bearing) => set({ bearing: ((bearing % 360) + 360) % 360 }),
+      rotateBy: (delta) => set((s) => ({ bearing: (((s.bearing + delta) % 360) + 360) % 360 })),
+      setTraceVertices: (traceVertices) => set({ traceVertices }),
       setMapOpacity: (mapOpacity) => set({ mapOpacity }),
       setSearchTarget: (searchTarget) => set({ searchTarget }),
       setPlanName: (name) => set((s) => ({ plan: touch({ ...s.plan, name }) })),
@@ -125,11 +140,24 @@ export const useOss = create<OssState>()(
       select: (selectedId) => set({ selectedId }),
 
       resetPlan: () =>
-        set({ plan: newPlan(), selectedId: null, drawKind: null, searchTarget: null }),
+        set({
+          plan: newPlan(),
+          selectedId: null,
+          mode: 'edit',
+          drawKind: null,
+          searchTarget: null,
+          traceVertices: 0,
+          bearing: 0,
+        }),
     }),
     {
       name: 'osstrack-plan',
-      partialize: (s) => ({ plan: s.plan, basemap: s.basemap, mapOpacity: s.mapOpacity }),
+      partialize: (s) => ({
+        plan: s.plan,
+        basemap: s.basemap,
+        mapOpacity: s.mapOpacity,
+        bearing: s.bearing,
+      }),
     },
   ),
 );
