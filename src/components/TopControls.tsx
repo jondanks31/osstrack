@@ -11,6 +11,8 @@ export default function TopControls() {
   const setBasemap = useOss((s) => s.setBasemap);
   const mapOpacity = useOss((s) => s.mapOpacity);
   const setMapOpacity = useOss((s) => s.setMapOpacity);
+  const maskOutside = useOss((s) => s.maskOutside);
+  const setMaskOutside = useOss((s) => s.setMaskOutside);
   const [layersOpen, setLayersOpen] = useState(false);
 
   return (
@@ -65,21 +67,49 @@ export default function TopControls() {
               </button>
             ))}
           </div>
-          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone-400">
-            Aerial visibility
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={mapOpacity}
-              onChange={(e) => setMapOpacity(parseFloat(e.target.value))}
-              className="mt-2 w-full accent-stone-900"
-            />
-          </label>
-          <p className="mt-1 text-[11px] text-stone-400">
-            Slide to 0 for a clean planning canvas.
-          </p>
+          <div className="mt-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-stone-400">
+                Surroundings
+              </p>
+              <p className="text-[11px] text-stone-400">
+                {maskOutside ? 'Focused on your plot' : 'Showing nearby land'}
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={!maskOutside}
+              onClick={() => setMaskOutside(!maskOutside)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                !maskOutside ? 'bg-stone-900' : 'bg-stone-300'
+              }`}
+              title={maskOutside ? 'Show surrounding map' : 'Hide surrounding map'}
+            >
+              <span
+                className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-all ${
+                  !maskOutside ? 'left-[22px]' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          {maskOutside && (
+            <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-stone-400">
+              Aerial visibility
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={mapOpacity}
+                onChange={(e) => setMapOpacity(parseFloat(e.target.value))}
+                className="mt-2 w-full accent-stone-900"
+              />
+              <span className="mt-1 block text-[11px] font-normal normal-case text-stone-400">
+                Slide to 0 for a clean planning canvas.
+              </span>
+            </label>
+          )}
         </div>
       )}
     </div>

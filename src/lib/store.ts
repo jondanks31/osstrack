@@ -26,12 +26,16 @@ interface OssState {
   basemap: Basemap;
   /** 0..1 aerial imagery opacity inside the plot */
   mapOpacity: number;
+  /** hide everything outside the plot behind a clean mask */
+  maskOutside: boolean;
   /** map rotation in degrees (0 = north up) */
   bearing: number;
   /** where search wants the map to fly; null until a place is picked */
   searchTarget: { lat: number; lng: number } | null;
   /** live count of points placed while tracing the boundary */
   traceVertices: number;
+  /** export panel visibility */
+  exportOpen: boolean;
 
   phase: () => Phase;
   setMode: (m: Mode) => void;
@@ -39,8 +43,10 @@ interface OssState {
   startBoundaryTrace: () => void;
   setBasemap: (b: Basemap) => void;
   setMapOpacity: (o: number) => void;
+  setMaskOutside: (v: boolean) => void;
   setBearing: (deg: number) => void;
   rotateBy: (delta: number) => void;
+  setExportOpen: (v: boolean) => void;
   setSearchTarget: (t: { lat: number; lng: number } | null) => void;
   setTraceVertices: (n: number) => void;
   setPlanName: (name: string) => void;
@@ -64,9 +70,11 @@ export const useOss = create<OssState>()(
       drawKind: null,
       basemap: 'satellite',
       mapOpacity: 0.7,
+      maskOutside: true,
       bearing: 0,
       searchTarget: null,
       traceVertices: 0,
+      exportOpen: false,
 
       phase: () => {
         const s = get();
@@ -79,8 +87,10 @@ export const useOss = create<OssState>()(
       // tracing requires edit mode; force it so a stale 'view' can't silently block drawing
       startBoundaryTrace: () => set({ mode: 'edit', drawKind: 'boundary', traceVertices: 0 }),
       setBasemap: (basemap) => set({ basemap }),
+      setMaskOutside: (maskOutside) => set({ maskOutside }),
       setBearing: (bearing) => set({ bearing: ((bearing % 360) + 360) % 360 }),
       rotateBy: (delta) => set((s) => ({ bearing: (((s.bearing + delta) % 360) + 360) % 360 })),
+      setExportOpen: (exportOpen) => set({ exportOpen }),
       setTraceVertices: (traceVertices) => set({ traceVertices }),
       setMapOpacity: (mapOpacity) => set({ mapOpacity }),
       setSearchTarget: (searchTarget) => set({ searchTarget }),
@@ -156,6 +166,7 @@ export const useOss = create<OssState>()(
         plan: s.plan,
         basemap: s.basemap,
         mapOpacity: s.mapOpacity,
+        maskOutside: s.maskOutside,
         bearing: s.bearing,
       }),
     },

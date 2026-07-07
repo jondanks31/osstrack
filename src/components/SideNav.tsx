@@ -5,6 +5,8 @@ import { useOss } from '@/lib/store';
 
 export default function SideNav() {
   const resetPlan = useOss((s) => s.resetPlan);
+  const hasBoundary = useOss((s) => s.plan.boundary !== null);
+  const setExportOpen = useOss((s) => s.setExportOpen);
 
   function confirmReset() {
     if (window.confirm('Start again? This deletes your boundary and everything drawn on it.')) {
@@ -24,9 +26,10 @@ export default function SideNav() {
         <Map className="size-4" />
       </button>
       <button
-        className="cursor-not-allowed rounded-full p-2.5 text-stone-300"
-        title="Export — coming soon"
-        disabled
+        onClick={() => setExportOpen(true)}
+        disabled={!hasBoundary}
+        className="rounded-full p-2.5 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent"
+        title={hasBoundary ? 'Export or print' : 'Export — trace your land first'}
       >
         <FileDown className="size-4" />
       </button>

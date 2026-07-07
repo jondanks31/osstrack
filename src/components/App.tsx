@@ -9,6 +9,7 @@ import FeaturePanel from './FeaturePanel';
 import TopControls from './TopControls';
 import RotationControl from './RotationControl';
 import SideNav from './SideNav';
+import ExportPanel from './ExportPanel';
 import { useOss } from '@/lib/store';
 import { acresOf, fmtAcres } from '@/lib/geo';
 
@@ -83,6 +84,8 @@ export default function App() {
             </div>
           </>
         )}
+
+        <ExportPanel />
       </div>
     </div>
   );

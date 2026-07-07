@@ -57,6 +57,7 @@ export default function MapCanvas() {
   const drawKind = useOss((s) => s.drawKind);
   const basemap = useOss((s) => s.basemap);
   const mapOpacity = useOss((s) => s.mapOpacity);
+  const maskOutside = useOss((s) => s.maskOutside);
   const searchTarget = useOss((s) => s.searchTarget);
   const bearing = useOss((s) => s.bearing);
 
@@ -79,10 +80,15 @@ export default function MapCanvas() {
 
     const satellite = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' },
+      {
+        maxZoom: 19,
+        crossOrigin: 'anonymous', // allow the canvas capture used by PDF export
+        attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+      },
     );
     const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      crossOrigin: 'anonymous',
       attribution: '© OpenStreetMap contributors',
     });
     satellite.addTo(map);
@@ -153,9 +159,9 @@ export default function MapCanvas() {
     const other = basemap === 'satellite' ? tiles.street : tiles.satellite;
     if (!map.hasLayer(active)) active.addTo(map);
     if (map.hasLayer(other)) other.remove();
-    // full opacity until the boundary exists (searching/tracing needs the imagery)
-    active.setOpacity(boundary ? mapOpacity : 1);
-  }, [basemap, mapOpacity, boundary]);
+    // dim only applies when focused on the plot; showing surroundings keeps full imagery
+    active.setOpacity(boundary && maskOutside ? mapOpacity : 1);
+  }, [basemap, mapOpacity, boundary, maskOutside]);
 
   // ── search flyTo ───────────────────────────────────────────────────
   useEffect(() => {
@@ -178,14 +184,16 @@ export default function MapCanvas() {
     const ring = boundary.geometry.coordinates[0].map(
       ([lng, lat]) => [lat, lng] as L.LatLngTuple,
     );
-    L.polygon([WORLD_RING, ring], {
-      stroke: false,
-      fillColor: '#f2f1ec',
-      fillOpacity: 1,
-      interactive: false,
-      pane: 'mask',
-      pmIgnore: true,
-    }).addTo(group);
+    if (maskOutside) {
+      L.polygon([WORLD_RING, ring], {
+        stroke: false,
+        fillColor: '#f2f1ec',
+        fillOpacity: 1,
+        interactive: false,
+        pane: 'mask',
+        pmIgnore: true,
+      }).addTo(group);
+    }
     L.polygon(ring, {
       color: '#1c1917',
       weight: 2.5,
@@ -199,7 +207,7 @@ export default function MapCanvas() {
       fittedBoundaryRef.current = key;
       map.fitBounds(L.latLngBounds(ring), { padding: [60, 60] });
     }
-  }, [boundary]);
+  }, [boundary, maskOutside]);
 
   // ── features ───────────────────────────────────────────────────────
   useEffect(() => {
