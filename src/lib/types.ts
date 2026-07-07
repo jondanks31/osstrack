@@ -1,0 +1,36 @@
+export type FeatureKind =
+  | 'field'
+  | 'track'
+  | 'fence'
+  | 'arena'
+  | 'stable'
+  | 'hardstanding'
+  | 'shelter'
+  | 'water'
+  | 'hay'
+  | 'gate'
+  | 'muck';
+
+export interface FeatureProps {
+  id: string;
+  kind: FeatureKind;
+  name: string;
+  notes: string;
+  /** Track width in metres (track kind only) */
+  widthM?: number;
+}
+
+export type PlanFeature = GeoJSON.Feature<GeoJSON.Geometry, FeatureProps>;
+export type BoundaryFeature = GeoJSON.Feature<GeoJSON.Polygon>;
+
+export interface Plan {
+  id: string;
+  name: string;
+  boundary: BoundaryFeature | null;
+  features: PlanFeature[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type Mode = 'view' | 'edit';
+export type Basemap = 'satellite' | 'street';
