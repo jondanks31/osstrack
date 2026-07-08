@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Pencil } from 'lucide-react';
 import MapCanvas from './MapCanvas';
 import SearchCard from './SearchCard';
 import TraceCard from './TraceCard';
@@ -11,11 +12,12 @@ import RotationControl from './RotationControl';
 import SideNav from './SideNav';
 import ExportPanel from './ExportPanel';
 import ElementsPanel from './ElementsPanel';
+import DesignerChrome from './DesignerChrome';
 import { useOss } from '@/lib/store';
-import { Pencil } from 'lucide-react';
 import { acresOf, fmtAcres } from '@/lib/geo';
 
-export default function App() {
+/** designId null = anonymous scratch design; a string loads that saved design. */
+export default function Designer({ designId }: { designId: string | null }) {
   const boundary = useOss((s) => s.plan.boundary);
   const searchTarget = useOss((s) => s.searchTarget);
   const mode = useOss((s) => s.mode);
@@ -26,16 +28,21 @@ export default function App() {
 
   const phase = boundary ? 'plan' : searchTarget ? 'trace' : 'search';
 
-  // touch devices open read-only so taps can't move anything
+  // load the requested design, then apply the touch read-only default
   useEffect(() => {
+    useOss.getState().loadDesign(designId);
     setHydrated(true);
     if (useOss.getState().plan.boundary && window.matchMedia('(pointer: coarse)').matches) {
       useOss.getState().setMode('view');
     }
-  }, []);
+  }, [designId]);
 
   if (!hydrated) {
-    return <div className="grid h-dvh place-items-center bg-[#f2f1ec] text-stone-400">Loading OssTrack…</div>;
+    return (
+      <div className="grid h-dvh place-items-center bg-[#f2f1ec] text-stone-400">
+        Loading OssTrack…
+      </div>
+    );
   }
 
   return (
@@ -48,6 +55,10 @@ export default function App() {
           <SideNav />
         </div>
 
+        <div className="absolute left-1/2 top-3 -translate-x-1/2">
+          <DesignerChrome designId={designId} />
+        </div>
+
         {phase === 'search' && (
           <div className="absolute inset-0 grid place-items-center">
             <SearchCard />
@@ -55,7 +66,7 @@ export default function App() {
         )}
 
         {phase === 'trace' && (
-          <div className="absolute left-1/2 top-4 -translate-x-1/2">
+          <div className="absolute left-1/2 top-16 -translate-x-1/2">
             <TraceCard />
           </div>
         )}
@@ -74,7 +85,7 @@ export default function App() {
               </div>
             )}
             {editingBoundary && (
-              <div className="absolute left-1/2 top-4 -translate-x-1/2">
+              <div className="absolute left-1/2 top-16 -translate-x-1/2">
                 <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white/90 px-4 py-2.5 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">
                   <span className="text-sm text-stone-700">
                     Drag the points to adjust your outline. Click a midpoint to add one.

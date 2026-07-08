@@ -2,24 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Basemap, BoundaryFeature, FeatureKind, Mode, Plan, PlanFeature } from './types';
 import { KINDS } from './kinds';
+import { emptyPlan, getDesign, getScratch, putDesign, putScratch } from './designs';
 
 export type Phase = 'search' | 'trace' | 'plan';
 export type DrawTarget = FeatureKind | 'boundary';
-
-function newPlan(): Plan {
-  const now = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    name: 'My land',
-    boundary: null,
-    features: [],
-    createdAt: now,
-    updatedAt: now,
-  };
-}
+export type SaveState = 'saved' | 'saving';
 
 interface OssState {
   plan: Plan;
+  /** id of the loaded saved design; null means the anonymous scratch design */
+  designId: string | null;
+  saveState: SaveState;
   selectedId: string | null;
   mode: Mode;
   drawKind: DrawTarget | null;
@@ -42,6 +35,8 @@ interface OssState {
   elementsOpen: boolean;
 
   phase: () => Phase;
+  /** hydrate the working plan from the repository (null = scratch) */
+  loadDesign: (id: string | null) => void;
   setMode: (m: Mode) => void;
   setDrawKind: (k: DrawTarget | null) => void;
   startBoundaryTrace: () => void;
@@ -67,10 +62,15 @@ interface OssState {
 
 const touch = (plan: Plan): Plan => ({ ...plan, updatedAt: new Date().toISOString() });
 
+// suppress autosave while loadDesign swaps the working plan
+let suppressSave = false;
+
 export const useOss = create<OssState>()(
   persist(
     (set, get) => ({
-      plan: newPlan(),
+      plan: emptyPlan('My land'),
+      designId: null,
+      saveState: 'saved',
       selectedId: null,
       mode: 'edit',
       drawKind: null,
@@ -88,6 +88,23 @@ export const useOss = create<OssState>()(
         const s = get();
         if (s.plan.boundary) return 'plan';
         return s.searchTarget ? 'trace' : 'search';
+      },
+
+      loadDesign: (id) => {
+        suppressSave = true;
+        const plan = id === null ? getScratch() : getDesign(id) ?? emptyPlan('Untitled design');
+        set({
+          plan,
+          designId: id,
+          saveState: 'saved',
+          selectedId: null,
+          drawKind: null,
+          editingBoundary: false,
+          searchTarget: null,
+          traceVertices: 0,
+          mode: 'edit',
+        });
+        suppressSave = false;
       },
 
       setMode: (mode) => set({ mode, drawKind: null, editingBoundary: false }),
@@ -161,9 +178,10 @@ export const useOss = create<OssState>()(
 
       select: (selectedId) => set({ selectedId }),
 
+      // clears the current design's contents but keeps its identity (id/name/owner)
       resetPlan: () =>
-        set({
-          plan: newPlan(),
+        set((s) => ({
+          plan: touch({ ...s.plan, boundary: null, features: [] }),
           selectedId: null,
           mode: 'edit',
           drawKind: null,
@@ -171,12 +189,12 @@ export const useOss = create<OssState>()(
           traceVertices: 0,
           bearing: 0,
           editingBoundary: false,
-        }),
+        })),
     }),
     {
-      name: 'osstrack-plan',
+      // only device-level view prefs persist globally; the plan lives in the designs repo
+      name: 'osstrack-prefs',
       partialize: (s) => ({
-        plan: s.plan,
         basemap: s.basemap,
         mapOpacity: s.mapOpacity,
         maskOutside: s.maskOutside,
@@ -185,3 +203,19 @@ export const useOss = create<OssState>()(
     },
   ),
 );
+
+// Autosave: debounce plan changes back to the design repository (scratch or saved).
+if (typeof window !== 'undefined') {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  useOss.subscribe((state, prev) => {
+    if (suppressSave || state.plan === prev.plan) return;
+    if (state.saveState !== 'saving') useOss.setState({ saveState: 'saving' });
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      const s = useOss.getState();
+      if (s.designId === null) putScratch(s.plan);
+      else putDesign(s.plan);
+      useOss.setState({ saveState: 'saved' });
+    }, 500);
+  });
+}

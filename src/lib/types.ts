@@ -26,6 +26,8 @@ export type BoundaryFeature = GeoJSON.Feature<GeoJSON.Polygon>;
 export interface Plan {
   id: string;
   name: string;
+  /** owner user id; undefined for the anonymous scratch design */
+  ownerId?: string;
   boundary: BoundaryFeature | null;
   features: PlanFeature[];
   createdAt: string;
