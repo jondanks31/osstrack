@@ -28,13 +28,23 @@ export default function Designer({ designId }: { designId: string | null }) {
 
   const phase = boundary ? 'plan' : searchTarget ? 'trace' : 'search';
 
-  // load the requested design, then apply the touch read-only default
+  // load the requested design (async for saved designs), then apply the touch read-only default
   useEffect(() => {
-    useOss.getState().loadDesign(designId);
-    setHydrated(true);
-    if (useOss.getState().plan.boundary && window.matchMedia('(pointer: coarse)').matches) {
-      useOss.getState().setMode('view');
-    }
+    let cancelled = false;
+    setHydrated(false);
+    useOss
+      .getState()
+      .loadDesign(designId)
+      .then(() => {
+        if (cancelled) return;
+        setHydrated(true);
+        if (useOss.getState().plan.boundary && window.matchMedia('(pointer: coarse)').matches) {
+          useOss.getState().setMode('view');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [designId]);
 
   if (!hydrated) {

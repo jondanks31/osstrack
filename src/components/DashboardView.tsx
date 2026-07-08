@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Copy, LandPlot, LogOut, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
@@ -17,40 +17,42 @@ import type { Plan } from '@/lib/types';
 export default function DashboardView() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [tick, setTick] = useState(0);
-  const refresh = () => setTick((t) => t + 1);
+  const [designs, setDesigns] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const designs = useMemo<Plan[]>(
-    () => (user ? listDesigns(user.id) : []),
-    // re-list whenever a mutation bumps `tick`
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, tick],
-  );
+  const load = useCallback(() => {
+    listDesigns()
+      .then(setDesigns)
+      .catch(() => setDesigns([]))
+      .finally(() => setLoading(false));
+  }, []);
 
-  function newDesign() {
-    if (!user) return;
-    const d = createDesign(user.id, { name: `Design ${designs.length + 1}` });
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function newDesign() {
+    const d = await createDesign({ name: `Design ${designs.length + 1}` });
     router.push(`/design/${d.id}`);
   }
 
-  function duplicate(id: string) {
-    if (!user) return;
-    duplicateDesign(id, user.id);
-    refresh();
+  async function duplicate(id: string) {
+    await duplicateDesign(id);
+    load();
   }
 
-  function rename(d: Plan) {
+  async function rename(d: Plan) {
     const name = window.prompt('Rename design', d.name);
     if (name && name.trim()) {
-      renameDesign(d.id, name.trim());
-      refresh();
+      await renameDesign(d.id, name.trim());
+      load();
     }
   }
 
-  function remove(d: Plan) {
+  async function remove(d: Plan) {
     if (window.confirm(`Delete “${d.name}”? This can’t be undone.`)) {
-      deleteDesign(d.id);
-      refresh();
+      await deleteDesign(d.id);
+      load();
     }
   }
 
@@ -84,7 +86,9 @@ export default function DashboardView() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Your designs</h1>
             <p className="mt-1 text-sm text-stone-500">
-              {designs.length} {designs.length === 1 ? 'design' : 'designs'}
+              {loading
+                ? 'Loading…'
+                : `${designs.length} ${designs.length === 1 ? 'design' : 'designs'}`}
             </p>
           </div>
           <button
@@ -96,7 +100,11 @@ export default function DashboardView() {
           </button>
         </div>
 
-        {designs.length === 0 ? (
+        {loading ? (
+          <div className="mt-10 grid place-items-center py-20 text-sm text-stone-400">
+            Loading your designs…
+          </div>
+        ) : designs.length === 0 ? (
           <div className="mt-10 grid place-items-center rounded-3xl border border-dashed border-stone-300 py-20 text-center">
             <LandPlot className="size-8 text-stone-300" />
             <p className="mt-3 text-sm font-medium text-stone-600">No designs yet</p>

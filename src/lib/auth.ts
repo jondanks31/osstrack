@@ -1,59 +1,50 @@
-/**
- * Auth abstraction. Today this is a local mock (no real security — any email/password
- * is accepted and the "session" lives in localStorage) so the whole flow works with no
- * backend. A Supabase-backed provider will implement this same surface later.
- */
+import type { User } from '@supabase/supabase-js';
+import { supabase } from './supabase';
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
 }
 
-const KEY = 'osstrack-auth';
-type Listener = (user: AuthUser | null) => void;
-const listeners = new Set<Listener>();
-
-function read(): AuthUser | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || 'null');
-  } catch {
-    return null;
-  }
-}
-
-function write(user: AuthUser | null) {
-  if (typeof window === 'undefined') return;
-  if (user) localStorage.setItem(KEY, JSON.stringify(user));
-  else localStorage.removeItem(KEY);
-  listeners.forEach((l) => l(user));
-}
-
-// Deterministic id from the email so signing back in re-attaches the same designs.
-function userFromEmail(email: string): AuthUser {
-  const clean = email.trim().toLowerCase();
-  return { id: `local-${clean}`, email: clean, name: clean.split('@')[0] || 'Rider' };
+function toUser(u: User | null | undefined): AuthUser | null {
+  if (!u) return null;
+  const email = u.email ?? '';
+  const name = (u.user_metadata?.name as string) || email.split('@')[0] || 'Rider';
+  return { id: u.id, email, name };
 }
 
 export const auth = {
-  getSession(): AuthUser | null {
-    return read();
+  async getSession(): Promise<AuthUser | null> {
+    const { data } = await supabase.auth.getSession();
+    return toUser(data.session?.user);
   },
-  async signUp(email: string, _password: string): Promise<AuthUser> {
-    const user = userFromEmail(email);
-    write(user);
-    return user;
+
+  /**
+   * Returns the user only when a session exists. With "Confirm email" enabled the
+   * user is created but no session is issued until they confirm — we return null so
+   * the UI can show a "check your email" state.
+   */
+  async signUp(email: string, password: string): Promise<AuthUser | null> {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    return data.session ? toUser(data.user) : null;
   },
-  async signIn(email: string, _password: string): Promise<AuthUser> {
-    const user = userFromEmail(email);
-    write(user);
-    return user;
+
+  async signIn(email: string, password: string): Promise<AuthUser | null> {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return toUser(data.user);
   },
+
   async signOut(): Promise<void> {
-    write(null);
+    await supabase.auth.signOut();
   },
-  subscribe(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+
+  subscribe(listener: (user: AuthUser | null) => void): () => void {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      listener(toUser(session?.user));
+    });
+    return () => data.subscription.unsubscribe();
   },
 };

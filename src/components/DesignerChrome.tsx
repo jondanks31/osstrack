@@ -50,12 +50,16 @@ export default function DesignerChrome({ designId }: { designId: string | null }
     async function saveToAccount() {
       if (!user) return;
       setSaving(true);
-      const design = createDesign(user.id, {
-        name: plan.name || 'My land',
-        boundary: plan.boundary,
-        features: plan.features,
-      });
-      router.push(`/design/${design.id}`);
+      try {
+        const design = await createDesign({
+          name: plan.name || 'My land',
+          boundary: plan.boundary,
+          features: plan.features,
+        });
+        router.push(`/design/${design.id}`);
+      } catch {
+        setSaving(false);
+      }
     }
     return (
       <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-white/85 p-1.5 pl-3 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">

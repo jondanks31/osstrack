@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Basemap, BoundaryFeature, FeatureKind, Mode, Plan, PlanFeature } from './types';
 import { KINDS } from './kinds';
-import { emptyPlan, getDesign, getScratch, putDesign, putScratch } from './designs';
+import { emptyPlan, getDesign, getScratch, putScratch, updateDesign } from './designs';
 
 export type Phase = 'search' | 'trace' | 'plan';
 export type DrawTarget = FeatureKind | 'boundary';
@@ -36,7 +36,7 @@ interface OssState {
 
   phase: () => Phase;
   /** hydrate the working plan from the repository (null = scratch) */
-  loadDesign: (id: string | null) => void;
+  loadDesign: (id: string | null) => Promise<void>;
   setMode: (m: Mode) => void;
   setDrawKind: (k: DrawTarget | null) => void;
   startBoundaryTrace: () => void;
@@ -90,9 +90,9 @@ export const useOss = create<OssState>()(
         return s.searchTarget ? 'trace' : 'search';
       },
 
-      loadDesign: (id) => {
+      loadDesign: async (id) => {
+        const plan = id === null ? getScratch() : (await getDesign(id)) ?? emptyPlan('Untitled design');
         suppressSave = true;
-        const plan = id === null ? getScratch() : getDesign(id) ?? emptyPlan('Untitled design');
         set({
           plan,
           designId: id,
@@ -204,18 +204,23 @@ export const useOss = create<OssState>()(
   ),
 );
 
-// Autosave: debounce plan changes back to the design repository (scratch or saved).
+// Autosave: debounce plan changes back to the design repository (scratch or Supabase).
 if (typeof window !== 'undefined') {
   let timer: ReturnType<typeof setTimeout> | null = null;
   useOss.subscribe((state, prev) => {
     if (suppressSave || state.plan === prev.plan) return;
     if (state.saveState !== 'saving') useOss.setState({ saveState: 'saving' });
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
+    timer = setTimeout(async () => {
       const s = useOss.getState();
-      if (s.designId === null) putScratch(s.plan);
-      else putDesign(s.plan);
-      useOss.setState({ saveState: 'saved' });
+      try {
+        if (s.designId === null) putScratch(s.plan);
+        else await updateDesign(s.plan);
+      } catch (e) {
+        console.error('Autosave failed', e);
+      } finally {
+        useOss.setState({ saveState: 'saved' });
+      }
     }, 500);
   });
 }

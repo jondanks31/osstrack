@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import RequireAuth from '@/components/RequireAuth';
-import { useAuth } from '@/lib/useAuth';
 import { getDesign } from '@/lib/designs';
 
 const Designer = dynamic(() => import('@/components/Designer'), {
@@ -22,15 +21,23 @@ function Loading() {
 
 /** Only render a design the signed-in user actually owns; otherwise bounce to the dashboard. */
 function OwnedDesigner({ id }: { id: string }) {
-  const { user } = useAuth();
   const router = useRouter();
   const [ok, setOk] = useState(false);
 
+  // RLS already scopes the fetch to the owner; a null result means it isn't theirs
   useEffect(() => {
-    const design = getDesign(id);
-    if (design && design.ownerId === user?.id) setOk(true);
-    else router.replace('/dashboard');
-  }, [id, user, router]);
+    let cancelled = false;
+    getDesign(id)
+      .then((design) => {
+        if (cancelled) return;
+        if (design) setOk(true);
+        else router.replace('/dashboard');
+      })
+      .catch(() => !cancelled && router.replace('/dashboard'));
+    return () => {
+      cancelled = true;
+    };
+  }, [id, router]);
 
   if (!ok) return <Loading />;
   return <Designer designId={id} />;

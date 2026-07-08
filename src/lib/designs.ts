@@ -1,79 +1,98 @@
 import type { Plan } from './types';
+import { supabase } from './supabase';
 
 /**
- * Local designs repository. Backs the plan library on localStorage today; the same
- * surface (list/get/put/create/duplicate/rename/delete) maps cleanly onto Supabase later.
+ * Designs repository. Saved designs live in Supabase (RLS scopes every query to the
+ * signed-in owner); the anonymous scratch design stays in localStorage so the free
+ * designer works with no account.
  */
-const DESIGNS_KEY = 'osstrack-designs-v1';
+
 const SCRATCH_KEY = 'osstrack-scratch';
 const LEGACY_KEY = 'osstrack-plan'; // pre-library single-plan persist blob
 
 const now = () => new Date().toISOString();
 
-export function emptyPlan(name = 'Untitled design', ownerId?: string): Plan {
+export function emptyPlan(name = 'Untitled design'): Plan {
   const t = now();
-  return { id: crypto.randomUUID(), name, ownerId, boundary: null, features: [], createdAt: t, updatedAt: t };
+  return { id: crypto.randomUUID(), name, boundary: null, features: [], createdAt: t, updatedAt: t };
 }
 
-function readAll(): Record<string, Plan> {
-  if (typeof window === 'undefined') return {};
-  try {
-    return JSON.parse(localStorage.getItem(DESIGNS_KEY) || '{}');
-  } catch {
-    return {};
-  }
+// ── saved designs (Supabase) ───────────────────────────────────────
+interface DesignRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  data: { boundary: Plan['boundary']; features: Plan['features'] };
+  created_at: string;
+  updated_at: string;
 }
 
-function writeAll(all: Record<string, Plan>) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(DESIGNS_KEY, JSON.stringify(all));
-}
-
-export function listDesigns(ownerId: string): Plan[] {
-  return Object.values(readAll())
-    .filter((d) => d.ownerId === ownerId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
-export function getDesign(id: string): Plan | null {
-  return readAll()[id] ?? null;
-}
-
-export function putDesign(design: Plan) {
-  const all = readAll();
-  all[design.id] = { ...design, updatedAt: now() };
-  writeAll(all);
-}
-
-export function createDesign(ownerId: string, seed?: Partial<Plan>): Plan {
-  const base = emptyPlan(seed?.name ?? 'Untitled design', ownerId);
-  const design: Plan = {
-    ...base,
-    boundary: seed?.boundary ?? null,
-    features: seed?.features ? structuredClone(seed.features) : [],
+function rowToPlan(r: DesignRow): Plan {
+  return {
+    id: r.id,
+    name: r.name,
+    ownerId: r.owner_id,
+    boundary: r.data?.boundary ?? null,
+    features: r.data?.features ?? [],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
-  putDesign(design);
-  return design;
 }
 
-export function duplicateDesign(id: string, ownerId: string): Plan | null {
-  const src = getDesign(id);
+export async function listDesigns(): Promise<Plan[]> {
+  const { data, error } = await supabase
+    .from('designs')
+    .select('*')
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data as DesignRow[]).map(rowToPlan);
+}
+
+export async function getDesign(id: string): Promise<Plan | null> {
+  const { data, error } = await supabase.from('designs').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? rowToPlan(data as DesignRow) : null;
+}
+
+// owner_id is filled by the column default auth.uid() and enforced by RLS
+export async function createDesign(seed?: Partial<Plan>): Promise<Plan> {
+  const { data, error } = await supabase
+    .from('designs')
+    .insert({
+      name: seed?.name ?? 'Untitled design',
+      data: { boundary: seed?.boundary ?? null, features: seed?.features ?? [] },
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return rowToPlan(data as DesignRow);
+}
+
+export async function updateDesign(plan: Plan): Promise<void> {
+  const { error } = await supabase
+    .from('designs')
+    .update({ name: plan.name, data: { boundary: plan.boundary, features: plan.features } })
+    .eq('id', plan.id);
+  if (error) throw error;
+}
+
+export async function duplicateDesign(id: string): Promise<Plan | null> {
+  const src = await getDesign(id);
   if (!src) return null;
-  return createDesign(ownerId, { name: `${src.name} copy`, boundary: src.boundary, features: src.features });
+  return createDesign({ name: `${src.name} copy`, boundary: src.boundary, features: src.features });
 }
 
-export function renameDesign(id: string, name: string) {
-  const d = getDesign(id);
-  if (d) putDesign({ ...d, name });
+export async function renameDesign(id: string, name: string): Promise<void> {
+  const { error } = await supabase.from('designs').update({ name }).eq('id', id);
+  if (error) throw error;
 }
 
-export function deleteDesign(id: string) {
-  const all = readAll();
-  delete all[id];
-  writeAll(all);
+export async function deleteDesign(id: string): Promise<void> {
+  const { error } = await supabase.from('designs').delete().eq('id', id);
+  if (error) throw error;
 }
 
-// ── anonymous scratch design ───────────────────────────────────────
+// ── anonymous scratch design (localStorage) ─────────────────────────
 export function getScratch(): Plan {
   if (typeof window === 'undefined') return emptyPlan('My land');
   let raw = localStorage.getItem(SCRATCH_KEY);

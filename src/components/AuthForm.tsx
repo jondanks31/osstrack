@@ -15,6 +15,7 @@ function AuthFormInner({ mode }: { mode: 'login' | 'signup' }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const signup = mode === 'signup';
 
@@ -26,12 +27,19 @@ function AuthFormInner({ mode }: { mode: 'login' | 'signup' }) {
     }
     setBusy(true);
     setError(null);
+    setInfo(null);
     try {
       const user = signup ? await signUp(email, password) : await signIn(email, password);
+      // no session yet (email confirmation is enabled) — tell them to confirm
+      if (!user) {
+        setInfo('Almost there — check your email to confirm your account, then sign in.');
+        setBusy(false);
+        return;
+      }
       // carry an anonymous scratch design into the new account, if requested
       if (params.get('import')) {
         const scratch = getScratch();
-        const design = createDesign(user.id, {
+        const design = await createDesign({
           name: scratch.name || 'My land',
           boundary: scratch.boundary,
           features: scratch.features,
@@ -40,8 +48,8 @@ function AuthFormInner({ mode }: { mode: 'login' | 'signup' }) {
       } else {
         router.replace(params.get('redirect') || '/dashboard');
       }
-    } catch {
-      setError('Something went wrong — please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong — please try again.');
       setBusy(false);
     }
   }
@@ -82,6 +90,7 @@ function AuthFormInner({ mode }: { mode: 'login' | 'signup' }) {
           className="w-full rounded-xl border-0 bg-stone-100 px-3.5 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900/70"
         />
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {info && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{info}</p>}
         <button
           type="submit"
           disabled={busy}
