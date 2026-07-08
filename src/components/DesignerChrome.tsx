@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Check, LoaderCircle, Save } from 'lucide-react';
+import { ArrowLeft, Check, LoaderCircle, Save, Share2 } from 'lucide-react';
 import { useOss } from '@/lib/store';
 import { useAuth } from '@/lib/useAuth';
 import { createDesign } from '@/lib/designs';
+import ShareDialog from './ShareDialog';
 
 export default function DesignerChrome({ designId }: { designId: string | null }) {
   const { user } = useAuth();
@@ -16,32 +17,44 @@ export default function DesignerChrome({ designId }: { designId: string | null }
   const saveState = useOss((s) => s.saveState);
   const plan = useOss((s) => s.plan);
   const [saving, setSaving] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
-  // ── saved design: name + autosave state + back to dashboard ──
+  // ── saved design: name + autosave state + back to dashboard + share ──
   if (designId) {
     return (
-      <div className="pointer-events-auto flex items-center gap-1 rounded-2xl bg-white/85 py-1.5 pl-1.5 pr-3 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">
-        <Link
-          href="/dashboard"
-          title="Back to dashboard"
-          className="rounded-xl p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900"
-        >
-          <ArrowLeft className="size-4" />
-        </Link>
-        <input
-          value={name}
-          onChange={(e) => setPlanName(e.target.value)}
-          className="w-40 rounded-lg bg-transparent px-1.5 py-1 text-sm font-semibold text-stone-900 focus:bg-stone-100 focus:outline-none"
-        />
-        <span className="ml-1 flex items-center gap-1 text-xs text-stone-400">
-          {saveState === 'saving' ? (
-            <LoaderCircle className="size-3.5 animate-spin" />
-          ) : (
-            <Check className="size-3.5" />
-          )}
-          {saveState === 'saving' ? 'Saving' : 'Saved'}
-        </span>
-      </div>
+      <>
+        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl bg-white/85 py-1.5 pl-1.5 pr-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">
+          <Link
+            href="/dashboard"
+            title="Back to dashboard"
+            className="rounded-xl p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
+          <input
+            value={name}
+            onChange={(e) => setPlanName(e.target.value)}
+            className="w-36 rounded-lg bg-transparent px-1.5 py-1 text-sm font-semibold text-stone-900 focus:bg-stone-100 focus:outline-none"
+          />
+          <span className="mx-1 flex items-center gap-1 text-xs text-stone-400">
+            {saveState === 'saving' ? (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            ) : (
+              <Check className="size-3.5" />
+            )}
+            {saveState === 'saving' ? 'Saving' : 'Saved'}
+          </span>
+          <button
+            onClick={() => setShareOpen(true)}
+            title="Share"
+            className="flex items-center gap-1.5 rounded-xl bg-stone-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-stone-700"
+          >
+            <Share2 className="size-4" />
+            Share
+          </button>
+        </div>
+        {shareOpen && <ShareDialog designId={designId} onClose={() => setShareOpen(false)} />}
+      </>
     );
   }
 

@@ -1,8 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Basemap, BoundaryFeature, FeatureKind, Mode, Plan, PlanFeature } from './types';
+import type {
+  Annotation,
+  Basemap,
+  BoundaryFeature,
+  FeatureKind,
+  Mode,
+  Plan,
+  PlanFeature,
+} from './types';
 import { KINDS } from './kinds';
 import { emptyPlan, getDesign, getScratch, putScratch, updateDesign } from './designs';
+import { fetchSharedAnnotations, fetchSharedDesign } from './share';
 
 export type Phase = 'search' | 'trace' | 'plan';
 export type DrawTarget = FeatureKind | 'boundary';
@@ -33,10 +42,25 @@ interface OssState {
   editingBoundary: boolean;
   /** elements list panel visibility */
   elementsOpen: boolean;
+  /** true in the public share view — the plan cannot be edited or autosaved */
+  readOnly: boolean;
+  /** viewer comment pins for the current design */
+  annotations: Annotation[];
+  /** arming the next map click to drop a comment */
+  addingAnnotation: boolean;
+  /** where a comment is being composed, before it is posted */
+  pendingAnnotation: { lng: number; lat: number } | null;
+  selectedAnnotationId: string | null;
 
   phase: () => Phase;
   /** hydrate the working plan from the repository (null = scratch) */
   loadDesign: (id: string | null) => Promise<void>;
+  /** hydrate a read-only shared design (+ its comments) by share token */
+  loadSharedDesign: (token: string) => Promise<boolean>;
+  setAnnotations: (a: Annotation[]) => void;
+  setAddingAnnotation: (v: boolean) => void;
+  setPendingAnnotation: (p: { lng: number; lat: number } | null) => void;
+  selectAnnotation: (id: string | null) => void;
   setMode: (m: Mode) => void;
   setDrawKind: (k: DrawTarget | null) => void;
   startBoundaryTrace: () => void;
@@ -80,6 +104,11 @@ export const useOss = create<OssState>()(
       bearing: 0,
       editingBoundary: false,
       elementsOpen: false,
+      readOnly: false,
+      annotations: [],
+      addingAnnotation: false,
+      pendingAnnotation: null,
+      selectedAnnotationId: null,
       searchTarget: null,
       traceVertices: 0,
       exportOpen: false,
@@ -97,6 +126,11 @@ export const useOss = create<OssState>()(
           plan,
           designId: id,
           saveState: 'saved',
+          readOnly: false,
+          annotations: [],
+          addingAnnotation: false,
+          pendingAnnotation: null,
+          selectedAnnotationId: null,
           selectedId: null,
           drawKind: null,
           editingBoundary: false,
@@ -106,6 +140,44 @@ export const useOss = create<OssState>()(
         });
         suppressSave = false;
       },
+
+      loadSharedDesign: async (token) => {
+        const design = await fetchSharedDesign(token);
+        if (!design) return false;
+        const annotations = await fetchSharedAnnotations(token).catch(() => []);
+        const nowIso = new Date().toISOString();
+        suppressSave = true;
+        set({
+          plan: {
+            id: design.id,
+            name: design.name,
+            boundary: design.boundary,
+            features: design.features,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          designId: null,
+          readOnly: true,
+          mode: 'view',
+          annotations,
+          addingAnnotation: false,
+          pendingAnnotation: null,
+          selectedAnnotationId: null,
+          selectedId: null,
+          drawKind: null,
+          editingBoundary: false,
+          searchTarget: null,
+          traceVertices: 0,
+        });
+        suppressSave = false;
+        return true;
+      },
+
+      setAnnotations: (annotations) => set({ annotations }),
+      setAddingAnnotation: (addingAnnotation) =>
+        set({ addingAnnotation, pendingAnnotation: null, selectedAnnotationId: null }),
+      setPendingAnnotation: (pendingAnnotation) => set({ pendingAnnotation, addingAnnotation: false }),
+      selectAnnotation: (selectedAnnotationId) => set({ selectedAnnotationId }),
 
       setMode: (mode) => set({ mode, drawKind: null, editingBoundary: false }),
       setDrawKind: (drawKind) => set({ drawKind, editingBoundary: false }),
@@ -208,7 +280,7 @@ export const useOss = create<OssState>()(
 if (typeof window !== 'undefined') {
   let timer: ReturnType<typeof setTimeout> | null = null;
   useOss.subscribe((state, prev) => {
-    if (suppressSave || state.plan === prev.plan) return;
+    if (suppressSave || state.readOnly || state.plan === prev.plan) return;
     if (state.saveState !== 'saving') useOss.setState({ saveState: 'saving' });
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {

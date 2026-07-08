@@ -75,6 +75,52 @@ body {
     drop-shadow(0 1px 2px rgb(0 0 0 / 0.5));
 }
 
+/* ── Annotation (comment) pins ───────────────────────────── */
+.oss-annotation {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: #d97706;
+  color: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35), inset 0 0 0 2px rgb(255 255 255 / 0.75);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.oss-annotation svg {
+  width: 15px;
+  height: 15px;
+}
+.oss-annotation:hover {
+  transform: scale(1.12);
+}
+.oss-annotation-selected {
+  transform: scale(1.2);
+  box-shadow:
+    0 2px 10px rgb(0 0 0 / 0.45),
+    inset 0 0 0 2px #fff,
+    0 0 0 3px rgb(217 119 6 / 0.55);
+}
+.oss-annotation-pending {
+  background: #1c1917;
+  animation: oss-pulse 1.2s ease-in-out infinite;
+}
+@keyframes oss-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+/* crosshair while placing a comment */
+.leaflet-container.oss-adding,
+.leaflet-container.oss-adding .leaflet-interactive {
+  cursor: crosshair !important;
+}
+
 /* ── Feature labels ──────────────────────────────────────── */
 .oss-label {
   background: rgb(255 255 255 / 0.85) !important;

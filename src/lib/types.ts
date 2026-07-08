@@ -36,3 +36,13 @@ export interface Plan {
 
 export type Mode = 'view' | 'edit';
 export type Basemap = 'satellite' | 'street';
+
+/** A viewer's comment pin on a shared design (does not change the plan itself). */
+export interface Annotation {
+  id: string;
+  lng: number;
+  lat: number;
+  body: string;
+  author: string | null;
+  createdAt: string;
+}

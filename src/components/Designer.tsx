@@ -13,8 +13,10 @@ import SideNav from './SideNav';
 import ExportPanel from './ExportPanel';
 import ElementsPanel from './ElementsPanel';
 import DesignerChrome from './DesignerChrome';
+import AnnotationPopover from './AnnotationPopover';
 import { useOss } from '@/lib/store';
 import { acresOf, fmtAcres } from '@/lib/geo';
+import { deleteAnnotation, listDesignAnnotations } from '@/lib/share';
 
 /** designId null = anonymous scratch design; a string loads that saved design. */
 export default function Designer({ designId }: { designId: string | null }) {
@@ -24,6 +26,10 @@ export default function Designer({ designId }: { designId: string | null }) {
   const selectedId = useOss((s) => s.selectedId);
   const editingBoundary = useOss((s) => s.editingBoundary);
   const setEditingBoundary = useOss((s) => s.setEditingBoundary);
+  const annotations = useOss((s) => s.annotations);
+  const selectedAnnotationId = useOss((s) => s.selectedAnnotationId);
+  const selectAnnotation = useOss((s) => s.selectAnnotation);
+  const selectedAnnotation = annotations.find((a) => a.id === selectedAnnotationId) ?? null;
   const [hydrated, setHydrated] = useState(false);
 
   const phase = boundary ? 'plan' : searchTarget ? 'trace' : 'search';
@@ -41,11 +47,25 @@ export default function Designer({ designId }: { designId: string | null }) {
         if (useOss.getState().plan.boundary && window.matchMedia('(pointer: coarse)').matches) {
           useOss.getState().setMode('view');
         }
+        // load any viewer comments left on this saved design
+        if (designId) {
+          listDesignAnnotations(designId)
+            .then((a) => !cancelled && useOss.getState().setAnnotations(a))
+            .catch(() => {});
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [designId]);
+
+  async function removeSelectedAnnotation() {
+    const id = useOss.getState().selectedAnnotationId;
+    if (!id) return;
+    await deleteAnnotation(id);
+    useOss.getState().setAnnotations(useOss.getState().annotations.filter((a) => a.id !== id));
+    useOss.getState().selectAnnotation(null);
+  }
 
   if (!hydrated) {
     return (
@@ -112,6 +132,15 @@ export default function Designer({ designId }: { designId: string | null }) {
             {selectedId && !editingBoundary && (
               <div className="absolute right-3 top-16">
                 <FeaturePanel />
+              </div>
+            )}
+            {selectedAnnotation && !editingBoundary && (
+              <div className="absolute right-3 top-16">
+                <AnnotationPopover
+                  annotation={selectedAnnotation}
+                  onClose={() => selectAnnotation(null)}
+                  onDelete={removeSelectedAnnotation}
+                />
               </div>
             )}
             <div className="absolute bottom-28 right-3">

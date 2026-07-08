@@ -42,6 +42,19 @@ function pathStyle(kind: FeatureKind, selected: boolean): L.PathOptions {
   }
 }
 
+const COMMENT_GLYPH =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+
+function annotationIcon(selected: boolean, pending = false): L.DivIcon {
+  const cls = `oss-annotation${selected ? ' oss-annotation-selected' : ''}${pending ? ' oss-annotation-pending' : ''}`;
+  return L.divIcon({
+    className: '',
+    html: `<div class="${cls}">${COMMENT_GLYPH}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
 export default function MapCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -49,6 +62,7 @@ export default function MapCanvas() {
   const featureGroupRef = useRef<L.LayerGroup | null>(null);
   const boundaryGroupRef = useRef<L.LayerGroup | null>(null);
   const editGroupRef = useRef<L.LayerGroup | null>(null);
+  const annotationGroupRef = useRef<L.LayerGroup | null>(null);
   const fittedBoundaryRef = useRef<string | null>(null);
 
   const boundary = useOss((s) => s.plan.boundary);
@@ -62,6 +76,10 @@ export default function MapCanvas() {
   const editingBoundary = useOss((s) => s.editingBoundary);
   const searchTarget = useOss((s) => s.searchTarget);
   const bearing = useOss((s) => s.bearing);
+  const annotations = useOss((s) => s.annotations);
+  const addingAnnotation = useOss((s) => s.addingAnnotation);
+  const pendingAnnotation = useOss((s) => s.pendingAnnotation);
+  const selectedAnnotationId = useOss((s) => s.selectedAnnotationId);
 
   // ── init map (once) ────────────────────────────────────────────────
   useEffect(() => {
@@ -111,6 +129,7 @@ export default function MapCanvas() {
     boundaryGroupRef.current = L.layerGroup().addTo(map);
     featureGroupRef.current = L.layerGroup().addTo(map);
     editGroupRef.current = L.layerGroup().addTo(map);
+    annotationGroupRef.current = L.layerGroup().addTo(map);
 
     map.pm.setGlobalOptions({ snappable: true, snapDistance: 15 });
 
@@ -140,8 +159,16 @@ export default function MapCanvas() {
       });
     });
 
-    // click on empty map clears selection
-    map.on('click', () => useOss.getState().select(null));
+    // a map click either drops a pending comment (when armed) or clears selection
+    map.on('click', (e) => {
+      const s = useOss.getState();
+      if (s.addingAnnotation) {
+        s.setPendingAnnotation({ lng: e.latlng.lng, lat: e.latlng.lat });
+      } else {
+        s.select(null);
+        s.selectAnnotation(null);
+      }
+    });
 
     fittedBoundaryRef.current = null; // new map instance must re-fit to the boundary
     mapRef.current = map;
@@ -330,7 +357,10 @@ export default function MapCanvas() {
 
       if (interactive) {
         layer.on('click', (e) => {
+          // while arming a comment, let the click bubble to the map to place the pin
+          if (useOss.getState().addingAnnotation) return;
           L.DomEvent.stopPropagation(e as L.LeafletEvent & { originalEvent: Event });
+          useOss.getState().selectAnnotation(null);
           useOss.getState().select(id);
         });
       }
@@ -343,6 +373,43 @@ export default function MapCanvas() {
       }
     }
   }, [features, selectedId, mode, editingBoundary]);
+
+  // ── annotations (comment pins) ─────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    const group = annotationGroupRef.current;
+    if (!map || !group) return;
+    group.clearLayers();
+
+    for (const a of annotations) {
+      const marker = L.marker([a.lat, a.lng], {
+        icon: annotationIcon(a.id === selectedAnnotationId),
+        pmIgnore: true,
+        // keep pins clickable to read them even in read-only share view
+        interactive: true,
+      });
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e as L.LeafletEvent & { originalEvent: Event });
+        useOss.getState().select(null);
+        useOss.getState().selectAnnotation(a.id);
+      });
+      marker.addTo(group);
+    }
+
+    if (pendingAnnotation) {
+      L.marker([pendingAnnotation.lat, pendingAnnotation.lng], {
+        icon: annotationIcon(false, true),
+        interactive: false,
+        pmIgnore: true,
+      }).addTo(group);
+    }
+  }, [annotations, selectedAnnotationId, pendingAnnotation]);
+
+  // crosshair cursor while placing a comment
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) el.classList.toggle('oss-adding', addingAnnotation);
+  }, [addingAnnotation]);
 
   // ── draw mode ──────────────────────────────────────────────────────
   useEffect(() => {
