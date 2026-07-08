@@ -65,7 +65,7 @@ export default function App() {
             <div className="absolute right-3 top-3">
               <TopControls />
             </div>
-            <div className="absolute left-20 top-3">
+            <div className="absolute left-3 top-3">
               <ElementsPanel />
             </div>
             {mode === 'edit' && !editingBoundary && (

@@ -32,7 +32,7 @@ export default function ElementsPanel() {
   }
 
   return (
-    <div className="pointer-events-auto flex max-h-[70vh] w-60 flex-col rounded-2xl bg-white/90 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">
+    <div className="pointer-events-auto ml-[68px] flex max-h-[70vh] w-60 flex-col rounded-2xl bg-white/90 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
         <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Elements</p>
         <button
