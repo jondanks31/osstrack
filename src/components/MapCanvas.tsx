@@ -24,8 +24,8 @@ function markerIcon(kind: FeatureKind, selected: boolean): L.DivIcon {
   return L.divIcon({
     className: '',
     html: `<div class="oss-marker${selected ? ' oss-marker-selected' : ''}" style="--c:${meta.color}">${meta.glyph}</div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
   });
 }
 
@@ -48,6 +48,7 @@ export default function MapCanvas() {
   const tilesRef = useRef<{ satellite: L.TileLayer; street: L.TileLayer } | null>(null);
   const featureGroupRef = useRef<L.LayerGroup | null>(null);
   const boundaryGroupRef = useRef<L.LayerGroup | null>(null);
+  const editGroupRef = useRef<L.LayerGroup | null>(null);
   const fittedBoundaryRef = useRef<string | null>(null);
 
   const boundary = useOss((s) => s.plan.boundary);
@@ -58,6 +59,7 @@ export default function MapCanvas() {
   const basemap = useOss((s) => s.basemap);
   const mapOpacity = useOss((s) => s.mapOpacity);
   const maskOutside = useOss((s) => s.maskOutside);
+  const editingBoundary = useOss((s) => s.editingBoundary);
   const searchTarget = useOss((s) => s.searchTarget);
   const bearing = useOss((s) => s.bearing);
 
@@ -69,6 +71,8 @@ export default function MapCanvas() {
       zoomControl: false,
       attributionControl: false,
       zoomSnap: 0.5,
+      // allow zooming past the imagery's native detail for fine vertex placement
+      maxZoom: 22,
       rotate: true,
       rotateControl: false,
       touchRotate: false,
@@ -78,16 +82,20 @@ export default function MapCanvas() {
     L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+    // maxNativeZoom caps tile requests at the provider's real detail; maxZoom lets the
+    // map upscale those tiles further so users can nudge points precisely.
     const satellite = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
-        maxZoom: 19,
+        maxNativeZoom: 19,
+        maxZoom: 22,
         crossOrigin: 'anonymous', // allow the canvas capture used by PDF export
         attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
       },
     );
     const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
+      maxNativeZoom: 19,
+      maxZoom: 22,
       crossOrigin: 'anonymous',
       attribution: '© OpenStreetMap contributors',
     });
@@ -102,6 +110,7 @@ export default function MapCanvas() {
     maskPane.style.zIndex = '350';
     boundaryGroupRef.current = L.layerGroup().addTo(map);
     featureGroupRef.current = L.layerGroup().addTo(map);
+    editGroupRef.current = L.layerGroup().addTo(map);
 
     map.pm.setGlobalOptions({ snappable: true, snapDistance: 15 });
 
@@ -170,7 +179,7 @@ export default function MapCanvas() {
     map.flyTo([searchTarget.lat, searchTarget.lng], 17, { duration: 1.8 });
   }, [searchTarget]);
 
-  // ── boundary outline + outside mask ────────────────────────────────
+  // ── boundary outline + outside mask (static view) ──────────────────
   useEffect(() => {
     const map = mapRef.current;
     const group = boundaryGroupRef.current;
@@ -184,30 +193,76 @@ export default function MapCanvas() {
     const ring = boundary.geometry.coordinates[0].map(
       ([lng, lat]) => [lat, lng] as L.LatLngTuple,
     );
-    if (maskOutside) {
-      L.polygon([WORLD_RING, ring], {
-        stroke: false,
-        fillColor: '#f2f1ec',
-        fillOpacity: 1,
+
+    // while editing, the edit effect owns the outline and the mask is hidden so the
+    // shape can be aligned against the imagery — draw nothing here
+    if (!editingBoundary) {
+      if (maskOutside) {
+        L.polygon([WORLD_RING, ring], {
+          stroke: false,
+          fillColor: '#f2f1ec',
+          fillOpacity: 1,
+          interactive: false,
+          pane: 'mask',
+          pmIgnore: true,
+        }).addTo(group);
+      }
+      L.polygon(ring, {
+        color: '#1c1917',
+        weight: 2.5,
+        fill: false,
         interactive: false,
-        pane: 'mask',
         pmIgnore: true,
       }).addTo(group);
     }
-    L.polygon(ring, {
-      color: '#1c1917',
-      weight: 2.5,
-      fill: false,
-      interactive: false,
-      pmIgnore: true,
-    }).addTo(group);
 
+    // fit once for a given plot; never while editing, or live edits would keep re-zooming
     const key = JSON.stringify(boundary.geometry.coordinates);
-    if (fittedBoundaryRef.current !== key) {
+    if (!editingBoundary && fittedBoundaryRef.current !== key) {
       fittedBoundaryRef.current = key;
       map.fitBounds(L.latLngBounds(ring), { padding: [60, 60] });
+    } else if (editingBoundary) {
+      fittedBoundaryRef.current = key; // keep in sync so it won't jump when editing ends
     }
-  }, [boundary, maskOutside]);
+  }, [boundary, maskOutside, editingBoundary]);
+
+  // ── editable outline (its own layer, keyed only on the edit toggle) ─
+  // Kept separate so committing an edit — which updates the store boundary — never
+  // tears down the very layer Geoman is mid-drag on (that threw a `baseVal` error).
+  useEffect(() => {
+    const map = mapRef.current;
+    const group = editGroupRef.current;
+    if (!map || !group) return;
+    group.clearLayers();
+    if (!editingBoundary) return;
+
+    const boundaryNow = useOss.getState().plan.boundary;
+    if (!boundaryNow) return;
+    const ring = boundaryNow.geometry.coordinates[0].map(
+      ([lng, lat]) => [lat, lng] as L.LatLngTuple,
+    );
+
+    const outline = L.polygon(ring, {
+      color: '#1c1917',
+      weight: 3,
+      fillColor: '#1c1917',
+      fillOpacity: 0.05,
+    }).addTo(group);
+
+    const commit = () => {
+      const gj = outline.toGeoJSON() as GeoJSON.Feature<GeoJSON.Polygon>;
+      useOss.getState().setBoundary(gj);
+    };
+    outline.pm.enable({ allowSelfIntersection: false });
+    outline.on('pm:markerdragend', commit); // vertex moved
+    outline.on('pm:vertexadded', commit); // midpoint clicked to add a vertex
+    outline.on('pm:vertexremoved', commit); // vertex deleted
+
+    return () => {
+      outline.pm.disable();
+      group.clearLayers();
+    };
+  }, [editingBoundary]);
 
   // ── features ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -216,7 +271,9 @@ export default function MapCanvas() {
     if (!map || !group) return;
     group.clearLayers();
 
-    const editable = mode === 'edit';
+    // while adjusting the outline, features are inert so clicks land on boundary handles
+    const editable = mode === 'edit' && !editingBoundary;
+    const interactive = !editingBoundary;
 
     for (const f of features) {
       const { id, kind, name, widthM } = f.properties;
@@ -244,6 +301,7 @@ export default function MapCanvas() {
         const marker = L.marker([lat, lng], {
           icon: markerIcon(kind, selected),
           draggable: editable,
+          interactive,
           pmIgnore: true,
         });
         marker.on('dragend', () => {
@@ -252,7 +310,7 @@ export default function MapCanvas() {
         });
         layer = marker;
       } else {
-        const gj = L.geoJSON(f, { style: pathStyle(kind, selected) });
+        const gj = L.geoJSON(f, { style: { ...pathStyle(kind, selected), interactive } });
         const inner = gj.getLayers()[0] as L.Path;
         inner.bindTooltip(name, {
           permanent: f.geometry.type !== 'LineString',
@@ -270,10 +328,12 @@ export default function MapCanvas() {
         layer = inner;
       }
 
-      layer.on('click', (e) => {
-        L.DomEvent.stopPropagation(e as L.LeafletEvent & { originalEvent: Event });
-        useOss.getState().select(id);
-      });
+      if (interactive) {
+        layer.on('click', (e) => {
+          L.DomEvent.stopPropagation(e as L.LeafletEvent & { originalEvent: Event });
+          useOss.getState().select(id);
+        });
+      }
       layer.addTo(group);
 
       if (selected && editable && !(layer instanceof L.Marker)) {
@@ -282,7 +342,7 @@ export default function MapCanvas() {
         });
       }
     }
-  }, [features, selectedId, mode]);
+  }, [features, selectedId, mode, editingBoundary]);
 
   // ── draw mode ──────────────────────────────────────────────────────
   useEffect(() => {

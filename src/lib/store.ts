@@ -36,11 +36,17 @@ interface OssState {
   traceVertices: number;
   /** export panel visibility */
   exportOpen: boolean;
+  /** deliberately editing the plot outline (drag its vertices) */
+  editingBoundary: boolean;
+  /** elements list panel visibility */
+  elementsOpen: boolean;
 
   phase: () => Phase;
   setMode: (m: Mode) => void;
   setDrawKind: (k: DrawTarget | null) => void;
   startBoundaryTrace: () => void;
+  setEditingBoundary: (v: boolean) => void;
+  setElementsOpen: (v: boolean) => void;
   setBasemap: (b: Basemap) => void;
   setMapOpacity: (o: number) => void;
   setMaskOutside: (v: boolean) => void;
@@ -72,6 +78,8 @@ export const useOss = create<OssState>()(
       mapOpacity: 0.7,
       maskOutside: true,
       bearing: 0,
+      editingBoundary: false,
+      elementsOpen: false,
       searchTarget: null,
       traceVertices: 0,
       exportOpen: false,
@@ -82,10 +90,14 @@ export const useOss = create<OssState>()(
         return s.searchTarget ? 'trace' : 'search';
       },
 
-      setMode: (mode) => set({ mode, drawKind: null }),
-      setDrawKind: (drawKind) => set({ drawKind }),
+      setMode: (mode) => set({ mode, drawKind: null, editingBoundary: false }),
+      setDrawKind: (drawKind) => set({ drawKind, editingBoundary: false }),
       // tracing requires edit mode; force it so a stale 'view' can't silently block drawing
       startBoundaryTrace: () => set({ mode: 'edit', drawKind: 'boundary', traceVertices: 0 }),
+      // editing the outline is deliberate: clear any active drawing/selection first
+      setEditingBoundary: (editingBoundary) =>
+        set(editingBoundary ? { editingBoundary, mode: 'edit', drawKind: null, selectedId: null } : { editingBoundary }),
+      setElementsOpen: (elementsOpen) => set({ elementsOpen }),
       setBasemap: (basemap) => set({ basemap }),
       setMaskOutside: (maskOutside) => set({ maskOutside }),
       setBearing: (bearing) => set({ bearing: ((bearing % 360) + 360) % 360 }),
@@ -158,6 +170,7 @@ export const useOss = create<OssState>()(
           searchTarget: null,
           traceVertices: 0,
           bearing: 0,
+          editingBoundary: false,
         }),
     }),
     {
