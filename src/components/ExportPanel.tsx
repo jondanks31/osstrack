@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { FileDown, Printer, X, LoaderCircle } from 'lucide-react';
+import { FileDown, Printer, X, LoaderCircle, FileJson } from 'lucide-react';
 import { useOss } from '@/lib/store';
 import { exportPdf, printPlan } from '@/lib/export';
+import { downloadDesign } from '@/lib/designFile';
 
 export default function ExportPanel() {
   const open = useOss((s) => s.exportOpen);
@@ -74,9 +75,17 @@ export default function ExportPanel() {
           </button>
         </div>
 
+        <button
+          onClick={() => downloadDesign(plan)}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-stone-200 px-4 py-3 text-sm font-medium text-stone-700 transition hover:border-stone-900 hover:bg-stone-50"
+        >
+          <FileJson className="size-5 text-stone-900" />
+          Download backup (.json)
+        </button>
+
         <p className="mt-4 text-xs text-stone-400">
-          Tip: use the Layers panel first to show or hide the surrounding map, or fade the aerial
-          for a clean line drawing.
+          The PDF and print capture the map as shown. The backup file saves the raw plan — import it
+          from your dashboard to restore or move it to another device.
         </p>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
