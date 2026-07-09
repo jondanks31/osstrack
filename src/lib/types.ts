@@ -1,11 +1,14 @@
 export type FeatureKind =
   | 'field'
+  | 'pond'
+  | 'stream'
   | 'track'
   | 'fence'
   | 'arena'
   | 'stable'
   | 'hardstanding'
   | 'shelter'
+  | 'tree'
   | 'water'
   | 'hay'
   | 'gate'
@@ -16,8 +19,10 @@ export interface FeatureProps {
   kind: FeatureKind;
   name: string;
   notes: string;
-  /** Track width in metres (track kind only) */
+  /** Track base width in metres (track kind only) */
   widthM?: number;
+  /** Per-vertex track widths in metres — lets sections/corners be wider (track only) */
+  widths?: number[];
 }
 
 export type PlanFeature = GeoJSON.Feature<GeoJSON.Geometry, FeatureProps>;

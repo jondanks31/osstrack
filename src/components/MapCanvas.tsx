@@ -6,7 +6,7 @@ import 'leaflet-rotate';
 import '@geoman-io/leaflet-geoman-free';
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
-import { buffer } from '@turf/turf';
+import { bearing as turfBearing, buffer, destination, distance } from '@turf/turf';
 import { useOss } from '@/lib/store';
 import { mapController } from '@/lib/mapController';
 import { KINDS } from '@/lib/kinds';
@@ -40,6 +40,47 @@ function pathStyle(kind: FeatureKind, selected: boolean): L.PathOptions {
     default:
       return { ...base, fillColor: c, fillOpacity: selected ? 0.4 : 0.25 };
   }
+}
+
+// ── track ribbon geometry (supports per-vertex widths) ──────────────
+type LngLat = [number, number];
+
+/** left/right edge points offset perpendicular to the path at each vertex */
+function trackOffsets(coords: LngLat[], widths: number[]): { lefts: LngLat[]; rights: LngLat[] } {
+  const n = coords.length;
+  const lefts: LngLat[] = [];
+  const rights: LngLat[] = [];
+  for (let i = 0; i < n; i++) {
+    const b =
+      i === 0
+        ? turfBearing(coords[0], coords[1])
+        : i === n - 1
+          ? turfBearing(coords[n - 2], coords[n - 1])
+          : turfBearing(coords[i - 1], coords[i + 1]);
+    const half = Math.max(widths[i], 0.5) / 2;
+    lefts.push(destination(coords[i], half, b - 90, { units: 'meters' }).geometry.coordinates as LngLat);
+    rights.push(destination(coords[i], half, b + 90, { units: 'meters' }).geometry.coordinates as LngLat);
+  }
+  return { lefts, rights };
+}
+
+function trackRibbon(coords: LngLat[], widths: number[]): GeoJSON.Feature<GeoJSON.Polygon> {
+  const { lefts, rights } = trackOffsets(coords, widths);
+  const ring = [...lefts, ...rights.slice().reverse(), lefts[0]];
+  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
+}
+
+function resolveWidths(coords: LngLat[], widths: number[] | undefined, widthM: number): number[] {
+  return widths && widths.length === coords.length ? widths : new Array(coords.length).fill(widthM);
+}
+
+function widthHandleIcon(): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: '<div class="oss-width-handle"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
 }
 
 const COMMENT_GLYPH =
@@ -306,10 +347,15 @@ export default function MapCanvas() {
       const { id, kind, name, widthM } = f.properties;
       const selected = id === selectedId;
 
-      // track width visualised as a buffered ribbon under the line
-      if (kind === 'track' && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString')) {
+      // track width visualised as a ribbon under the line (variable per-vertex when set)
+      if (kind === 'track' && f.geometry.type === 'LineString' && f.geometry.coordinates.length >= 2) {
         try {
-          const ribbon = buffer(f as GeoJSON.Feature<GeoJSON.LineString>, (widthM ?? 4) / 2, { units: 'meters' });
+          const coords = f.geometry.coordinates as LngLat[];
+          const perVertex = f.properties.widths;
+          const ribbon =
+            perVertex && perVertex.length === coords.length
+              ? trackRibbon(coords, perVertex)
+              : buffer(f as GeoJSON.Feature<GeoJSON.LineString>, (widthM ?? 4) / 2, { units: 'meters' });
           if (ribbon) {
             L.geoJSON(ribbon, {
               style: { stroke: false, fillColor: KINDS.track.color, fillOpacity: 0.25 },
@@ -369,6 +415,28 @@ export default function MapCanvas() {
       if (selected && editable && !(layer instanceof L.Marker)) {
         (layer as L.Layer & { pm: { enable: (o?: object) => void } }).pm.enable({
           allowSelfIntersection: true,
+        });
+      }
+
+      // per-vertex width handles for a selected track — drag outward to widen a section
+      if (selected && editable && kind === 'track' && f.geometry.type === 'LineString') {
+        const coords = f.geometry.coordinates as LngLat[];
+        const widths = resolveWidths(coords, f.properties.widths, widthM ?? 4);
+        const { rights } = trackOffsets(coords, widths);
+        rights.forEach((rc, i) => {
+          const handle = L.marker([rc[1], rc[0]], {
+            icon: widthHandleIcon(),
+            draggable: true,
+            pmIgnore: true,
+            zIndexOffset: 1200,
+          });
+          handle.bindTooltip(`${Math.round(widths[i])} m`, { direction: 'top', offset: [0, -6] });
+          handle.on('dragend', () => {
+            const p = handle.getLatLng();
+            const half = distance(coords[i], [p.lng, p.lat], { units: 'meters' });
+            useOss.getState().setVertexWidth(id, i, Math.max(1, Math.min(25, half * 2)));
+          });
+          handle.addTo(group);
         });
       }
     }

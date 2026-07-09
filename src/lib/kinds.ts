@@ -20,6 +20,18 @@ export const KINDS: Record<FeatureKind, KindMeta> = {
     shape: 'Polygon',
     glyph: g('<path d="M3 20h18M5 20c2-6 4-9 7-9s5 3 7 9"/>'),
   },
+  pond: {
+    label: 'Pond / lake',
+    color: '#0284c7',
+    shape: 'Polygon',
+    glyph: g('<path d="M2 8c2-2 4-2 6 0s4 2 6 0 4-2 6 0M2 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>'),
+  },
+  stream: {
+    label: 'Stream',
+    color: '#0ea5e9',
+    shape: 'Line',
+    glyph: g('<path d="M2 12c3-4 5 4 8 0s5-4 8 0"/>'),
+  },
   track: {
     label: 'Track',
     color: '#b45309',
@@ -56,6 +68,12 @@ export const KINDS: Record<FeatureKind, KindMeta> = {
     shape: 'Rectangle',
     glyph: g('<path d="M3 21V10l9-5 9 5v11M3 21h18"/>'),
   },
+  tree: {
+    label: 'Tree',
+    color: '#15803d',
+    shape: 'Marker',
+    glyph: g('<circle cx="12" cy="9" r="6"/><path d="M12 15v6"/>'),
+  },
   water: {
     label: 'Water',
     color: '#0369a1',
@@ -84,12 +102,15 @@ export const KINDS: Record<FeatureKind, KindMeta> = {
 
 export const KIND_ORDER: FeatureKind[] = [
   'field',
+  'pond',
+  'stream',
   'track',
   'fence',
   'arena',
   'stable',
   'hardstanding',
   'shelter',
+  'tree',
   'water',
   'hay',
   'gate',

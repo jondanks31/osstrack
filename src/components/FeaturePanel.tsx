@@ -1,6 +1,6 @@
 'use client';
 
-import { Trash2, X } from 'lucide-react';
+import { BringToFront, SendToBack, Trash2, X } from 'lucide-react';
 import { useOss } from '@/lib/store';
 import { KINDS } from '@/lib/kinds';
 import { featureStats } from '@/lib/geo';
@@ -11,6 +11,9 @@ export default function FeaturePanel() {
   const mode = useOss((s) => s.mode);
   const select = useOss((s) => s.select);
   const updateProps = useOss((s) => s.updateFeatureProps);
+  const setTrackWidth = useOss((s) => s.setTrackWidth);
+  const bringToFront = useOss((s) => s.bringToFront);
+  const sendToBack = useOss((s) => s.sendToBack);
   const removeFeature = useOss((s) => s.removeFeature);
 
   if (!feature) return null;
@@ -18,6 +21,7 @@ export default function FeaturePanel() {
   const meta = KINDS[kind];
   const stats = featureStats(feature);
   const editable = mode === 'edit';
+  const isArea = feature.geometry.type !== 'Point';
 
   return (
     <div className="pointer-events-auto w-[min(92vw,320px)] rounded-2xl bg-white/90 p-4 shadow-xl ring-1 ring-black/5 backdrop-blur-xl">
@@ -47,18 +51,43 @@ export default function FeaturePanel() {
       {stats && <p className="mt-2 text-sm tabular-nums text-stone-500">{stats}</p>}
 
       {kind === 'track' && editable && (
-        <label className="mt-3 block text-xs text-stone-500">
-          Track width: <span className="font-medium text-stone-800">{widthM ?? 4} m</span>
-          <input
-            type="range"
-            min={2}
-            max={10}
-            step={0.5}
-            value={widthM ?? 4}
-            onChange={(e) => updateProps(id, { widthM: parseFloat(e.target.value) })}
-            className="mt-1 w-full accent-stone-900"
-          />
-        </label>
+        <div className="mt-3">
+          <label className="block text-xs text-stone-500">
+            Base width: <span className="font-medium text-stone-800">{widthM ?? 4} m</span>
+            <input
+              type="range"
+              min={2}
+              max={10}
+              step={0.5}
+              value={widthM ?? 4}
+              onChange={(e) => setTrackWidth(id, parseFloat(e.target.value))}
+              className="mt-1 w-full accent-stone-900"
+            />
+          </label>
+          <p className="mt-1 text-[11px] text-stone-400">
+            Drag an amber handle on the track to widen that section. Moving this slider resets to an
+            even width.
+          </p>
+        </div>
+      )}
+
+      {isArea && editable && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={() => sendToBack(id)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-stone-200 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-100"
+          >
+            <SendToBack className="size-3.5" />
+            Send back
+          </button>
+          <button
+            onClick={() => bringToFront(id)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-stone-200 py-1.5 text-xs font-medium text-stone-600 transition hover:bg-stone-100"
+          >
+            <BringToFront className="size-3.5" />
+            Bring front
+          </button>
+        </div>
       )}
 
       {editable ? (

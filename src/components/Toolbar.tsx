@@ -9,8 +9,11 @@ import {
   LandPlot,
   Route,
   Shovel,
+  Spline,
   Tent,
+  TreePine,
   Warehouse,
+  Waves,
   Wheat,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,12 +23,15 @@ import { useOss } from '@/lib/store';
 
 const ICONS: Record<FeatureKind, LucideIcon> = {
   field: LandPlot,
+  pond: Waves,
+  stream: Spline,
   track: Route,
   fence: Fence,
   arena: Grid2x2,
   stable: Home,
   hardstanding: Warehouse,
   shelter: Tent,
+  tree: TreePine,
   water: Droplets,
   hay: Wheat,
   gate: DoorOpen,

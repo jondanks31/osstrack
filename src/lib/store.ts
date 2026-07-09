@@ -79,6 +79,13 @@ interface OssState {
   addFeature: (kind: FeatureKind, geometry: GeoJSON.Geometry) => string;
   updateFeatureProps: (id: string, patch: Partial<Omit<PlanFeature['properties'], 'id' | 'kind'>>) => void;
   updateFeatureGeometry: (id: string, geometry: GeoJSON.Geometry) => void;
+  /** set a uniform track width, clearing any per-vertex overrides */
+  setTrackWidth: (id: string, widthM: number) => void;
+  /** widen (or narrow) a single track vertex */
+  setVertexWidth: (id: string, index: number, widthM: number) => void;
+  /** z-order: reorder a feature so it stacks above / below the others */
+  bringToFront: (id: string) => void;
+  sendToBack: (id: string) => void;
   removeFeature: (id: string) => void;
   select: (id: string | null) => void;
   resetPlan: () => void;
@@ -241,6 +248,51 @@ export const useOss = create<OssState>()(
             features: s.plan.features.map((f) => (f.properties.id === id ? { ...f, geometry } : f)),
           }),
         })),
+
+      setTrackWidth: (id, widthM) =>
+        set((s) => ({
+          plan: touch({
+            ...s.plan,
+            features: s.plan.features.map((f) =>
+              f.properties.id === id
+                ? { ...f, properties: { ...f.properties, widthM, widths: undefined } }
+                : f,
+            ),
+          }),
+        })),
+
+      setVertexWidth: (id, index, widthM) =>
+        set((s) => ({
+          plan: touch({
+            ...s.plan,
+            features: s.plan.features.map((f) => {
+              if (f.properties.id !== id || f.geometry.type !== 'LineString') return f;
+              const n = f.geometry.coordinates.length;
+              const base =
+                f.properties.widths && f.properties.widths.length === n
+                  ? f.properties.widths.slice()
+                  : new Array(n).fill(f.properties.widthM ?? 4);
+              base[index] = widthM;
+              return { ...f, properties: { ...f.properties, widths: base } };
+            }),
+          }),
+        })),
+
+      bringToFront: (id) =>
+        set((s) => {
+          const f = s.plan.features.find((x) => x.properties.id === id);
+          if (!f) return {} as Partial<OssState>;
+          const rest = s.plan.features.filter((x) => x.properties.id !== id);
+          return { plan: touch({ ...s.plan, features: [...rest, f] }) };
+        }),
+
+      sendToBack: (id) =>
+        set((s) => {
+          const f = s.plan.features.find((x) => x.properties.id === id);
+          if (!f) return {} as Partial<OssState>;
+          const rest = s.plan.features.filter((x) => x.properties.id !== id);
+          return { plan: touch({ ...s.plan, features: [f, ...rest] }) };
+        }),
 
       removeFeature: (id) =>
         set((s) => ({

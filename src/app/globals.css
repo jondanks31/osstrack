@@ -121,6 +121,20 @@ body {
   cursor: crosshair !important;
 }
 
+/* draggable handle for widening a track section */
+.oss-width-handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: #f59e0b;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+  cursor: grab;
+}
+.oss-width-handle:active {
+  cursor: grabbing;
+}
+
 /* ── Feature labels ──────────────────────────────────────── */
 .oss-label {
   background: rgb(255 255 255 / 0.85) !important;
